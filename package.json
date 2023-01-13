@@ -1,0 +1,19 @@
+{
+  "name": "yield",
+  "version": "0.0.1",
+  "description": "A service to monitor DeFi yield opportunities",
+  "main": "index.mjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Origin Protocol, Inc",
+  "license": "MIT",
+  "dependencies": {
+    "diff-arrays-of-objects": "^1.1.9",
+    "node-cron": "^3.0.2",
+    "node-fetch": "^3.3.0",
+    "nodemailer": "^6.9.0",
+    "nodemailer-html-to-text": "^3.2.0"
+  }
+}
