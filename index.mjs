@@ -15,8 +15,8 @@ const transporter = nodemailer.createTransport({
   port: 587,
   secure: false,
   auth: {
-    user: 'gregory38@ethereal.email',
-    pass: 'CrQErhEezpV5W66sp5',
+    user: 'name.cassin76@ethereal.email',
+    pass: 'GhBk1aQURBK8mAVgfa',
   },
 });
 
@@ -86,8 +86,8 @@ const sendEmail = (added, updated, removed) => {
   buildTable(removed, 'removed');
 
   transporter.sendMail({
-    from: '"Gregory Herzog" <gregory38@ethereal.email>',
-    to: "mail@micahalcorn.com",
+    from: '"Name Cassin" <name.cassin76@ethereal.email>',
+    to: '"Gregory Herzog" <gregory38@ethereal.email>',
     subject: "Yield updates",
     html,
   }, (err, info) => {
