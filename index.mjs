@@ -233,8 +233,8 @@ const checkForUpdates = async () => {
   compare(filtered);
 };
 
-// 6:00 AM Pacific every day
-const frequency = '0 6 * * *';
+// 6:00 AM Pacific every weekday
+const frequency = '0 6 * * 1-5';
 
 // every minute (for testing)
 // const frequency = '* * * * *';
