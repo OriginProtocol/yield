@@ -96,7 +96,7 @@ const compare = (pools) => {
     let prevPools = JSON.parse(data);
 
     // for testing purposes
-    simulateChanges(prevPools, pools);
+    // simulateChanges(prevPools, pools);
 
     // To-do: probably abandon diff library because APYs change on every pool constantly
     let { added, updated, removed } = diff(prevPools, pools, 'pool', { updatedValues: diff.updatedValues.both });
@@ -233,8 +233,8 @@ const checkForUpdates = async () => {
   compare(filtered);
 };
 
-// 6:00 AM Pacific every day
-const frequency = '0 6 * * *';
+// 6:00 AM Pacific every weekday
+const frequency = '0 6 * * 1-5';
 
 // every minute (for testing)
 // const frequency = '* * * * *';
