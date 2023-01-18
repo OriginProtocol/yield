@@ -96,7 +96,7 @@ const compare = (pools) => {
     let prevPools = JSON.parse(data);
 
     // for testing purposes
-    simulateChanges(prevPools, pools);
+    // simulateChanges(prevPools, pools);
 
     // To-do: probably abandon diff library because APYs change on every pool constantly
     let { added, updated, removed } = diff(prevPools, pools, 'pool', { updatedValues: diff.updatedValues.both });
