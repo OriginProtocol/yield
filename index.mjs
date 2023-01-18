@@ -1,5 +1,6 @@
 "use strict";
 
+import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import cron from 'node-cron';
 import fetch from 'node-fetch';
@@ -7,23 +8,34 @@ import diff from 'diff-arrays-of-objects';
 import nodemailer from 'nodemailer';
 import { htmlToText } from 'nodemailer-html-to-text';
 
+dotenv.config();
+
 const API_URL = 'https://yields.llama.fi/pools';
 
 const interestingFields = ['tvlUsd', 'apy', 'stablecoin', 'ilRisk', 'exposure'];
 const keysLength = interestingFields.length;
 
-// To-do: measure rate of change or velocity instead of simple numbers
-const TVL_CHANGE_THRESHOLD = 1000000;
-const APY_CHANGE_THRESHOLD = 0.5;
+const ONE_MILLION = 1000000;
+const ONE_PERCENT = 0.01;
+const ONE_PERCENTAGE_POINT = 1.0;
+
+// The TVL above which pools become interesting
+const TVL_AMOUNT_THRESHOLD = ONE_MILLION * 10;
+// The percentage TVL change that is noteworthy
+const TVL_CHANGE_THRESHOLD = ONE_PERCENT * 10;
+// The APY above which pools become interesting
+const APY_AMOUNT_THRESHOLD = ONE_PERCENTAGE_POINT * 3;
+// The percentage point change that is noteworthy
+const APY_CHANGE_THRESHOLD = ONE_PERCENTAGE_POINT;
 
 // set up mail service
 const transporter = nodemailer.createTransport({
-  host: 'smtp.ethereal.email',
+  host: process.env.MAIL_HOST,
   port: 587,
   secure: false,
   auth: {
-    user: 'gladyce.herzog@ethereal.email',
-    pass: 'MHgmmG8VpnukGKcZKX',
+    user: process.env.MAIL_USER,
+    pass: process.env.MAIL_PASS,
   },
 });
 
@@ -41,6 +53,7 @@ const getPools = async () => {
 };
 
 const save = (data) => {
+  // To-do: use a database
   fs.writeFile('last.json', data, (err) => {
     if (err) throw err;
 
@@ -51,16 +64,27 @@ const save = (data) => {
 const simulateChanges = (prevPools, pools) => {
   prevPools.shift();
   prevPools.shift();
-  pools[111].tvlUsd += 12345;
-  pools[222].tvlUsd -= 12345678;
-  pools[333].apy += 0.12;
-  pools[444].apy -= 1.23;
+
+  let prevPool;
+
+  prevPool = prevPools.find(p => p.tvlUsd < TVL_AMOUNT_THRESHOLD);
+
+  pools.find(p => p.pool === prevPool.pool).tvlUsd += TVL_AMOUNT_THRESHOLD;
+
+  pools[111].tvlUsd += prevPools[111].tvlUsd * TVL_CHANGE_THRESHOLD;
+  pools[222].tvlUsd -= prevPools[222].tvlUsd * TVL_CHANGE_THRESHOLD;
+
+  prevPool = prevPools.find(p => p.apy < APY_AMOUNT_THRESHOLD);
+
+  pools.find(p => p.pool === prevPool.pool).apy = APY_AMOUNT_THRESHOLD;
+
+  pools[333].apy += APY_CHANGE_THRESHOLD;
+  pools[444].apy -= APY_CHANGE_THRESHOLD;
+
   pools[555].stablecoin = !pools[555].stablecoin;
-  pools[666].stablecoin = !pools[666].stablecoin;
-  pools[777].ilRisk = 'no';
-  pools[888].ilRisk = 'yes';
-  pools[999].exposure = 'single';
-  pools[1010].exposure = 'multi';
+  pools[777].ilRisk = pools[777].ilRisk === 'no' ? 'yes' : 'no';
+  pools[888].exposure = pools[888].exposure === 'single' ? 'multi' : 'single';
+
   pools.pop();
   pools.pop();
 }
@@ -110,10 +134,15 @@ const sendEmail = (added, updated, removed) => {
       pools.forEach(([ prev, curr ]) => {
         let color;
         const tvlDiff = curr.tvlUsd - prev.tvlUsd;
+        const tvlChange = Math.round((tvlDiff / prev.tvlUsd) * 100) / 100;
         const apyDiff = Math.round((curr.apy - prev.apy) * 100) / 100;
         const attrDiff = curr.stablecoin !== prev.stablecoin || curr.ilRisk !== prev.ilRisk || curr.exposure !== prev.exposure;
-        const tvlIsInteresting = Math.abs(tvlDiff) > TVL_CHANGE_THRESHOLD;
-        const apyIsInteresting = Math.abs(apyDiff) > APY_CHANGE_THRESHOLD
+        const tvlCrossedThreshold = curr.tvlUsd >= TVL_AMOUNT_THRESHOLD && prev.tvlUsd < TVL_AMOUNT_THRESHOLD;
+        const tvlChangedConsiderably = Math.abs(tvlChange) >= TVL_CHANGE_THRESHOLD;
+        const tvlIsInteresting = tvlCrossedThreshold || tvlChangedConsiderably;
+        const apyCrossedThreshold = curr.apy >= APY_AMOUNT_THRESHOLD && prev.apy < APY_AMOUNT_THRESHOLD;
+        const apyChangedConsiderably = Math.abs(apyDiff) >= APY_CHANGE_THRESHOLD;
+        const apyIsInteresting = apyCrossedThreshold || apyChangedConsiderably;
 
         if (!tvlIsInteresting && !apyIsInteresting && !attrDiff) {
           return;
@@ -123,12 +152,12 @@ const sendEmail = (added, updated, removed) => {
 
         if (tvlIsInteresting) {
           color = tvlDiff > 0 ? 'green' : 'red';
-          html += `<tr><td>TVL</td><td style="color: ${color};">${tvlDiff > 0 ? '+' : ''}$${tvlDiff.toLocaleString('en-US')}</td></tr>`;
+          html += `<tr><td>TVL</td><td>$${curr.tvlUsd.toLocaleString('en-US')} <span style="color: ${color};">(${tvlDiff > 0 ? '+' : ''}${tvlChange * 100}%)</span></td></tr>`;
         }
 
         if (apyIsInteresting) {
           color = apyDiff > 0 ? 'green' : 'red';
-          html += `<tr><td>APY</td><td style="color: ${color};">${apyDiff > 0 ? '+' : ''}${apyDiff} bp</td></tr>`;
+          html += `<tr><td>APY</td><td>${Math.round(curr.apy * 100) / 100}% <span style="color: ${color};">(${apyDiff > 0 ? '+' : ''}${apyDiff * 100} bp)</span></td></tr>`;
         }
 
         if (curr.stablecoin !== prev.stablecoin) {
@@ -148,10 +177,10 @@ const sendEmail = (added, updated, removed) => {
       });
     // "added" and "removed" contain objects
     } else {
-      pools.forEach(({ pool, project, symbol, tvlUsd = 0, apyBase = 0, apyReward = 0, apy = 0, stablecoin, ilRisk, exposure }) => {
+      pools.forEach(({ pool, project, symbol, tvlUsd, apyBase, apyReward, apy, stablecoin, ilRisk, exposure }) => {
         html += `<tr><td colspan="2"><a href="https://defillama.com/yields/pool/${pool}">${project}: ${symbol}</a></td></tr>`;
-        html += `<tr><td>TVL</td><td>$${tvlUsd.toLocaleString('en-US')}</td></tr>`;
-        html += `<tr><td>APY</td><td>${apyBase} + ${apyReward} = ${apy}%</td></tr>`;
+        html += `<tr><td>TVL</td><td>$${(tvlUsd || 0).toLocaleString('en-US')}</td></tr>`;
+        html += `<tr><td>APY</td><td>${apyBase || 0} + ${apyReward || 0} = ${apy || 0}%</td></tr>`;
         html += `<tr><td>Stablecoin</td><td>${stablecoin}</td></tr>`;
         html += `<tr><td>IL risk</td><td>${ilRisk}</td></tr>`;
         html += `<tr><td>Exposure</td><td>${exposure}</td></tr>`;
@@ -175,11 +204,15 @@ const sendEmail = (added, updated, removed) => {
   buildTable(removed, 'removed');
 
   transporter.sendMail({
-    from: '"Gladyce Herzog" <gladyce.herzog@ethereal.email>',
-    to: '"Gregory Herzog" <gregory38@ethereal.email>',
+    from: process.env.MAIL_FROM,
+    to: process.env.MAIL_TO,
     subject: "Yield landscape updates",
     html,
   }, (err, info) => {
+    if (err) {
+      throw err;
+    }
+
     console.log("Message sent: %s", info.messageId);
 
     console.log("Preview URL: %s", nodemailer.getTestMessageUrl(info));
@@ -201,17 +234,18 @@ const checkForUpdates = async () => {
 };
 
 // 6:00 AM Pacific every day
-// const frequency = '0 6 * * *';
+const frequency = '0 6 * * *';
 
 // every minute (for testing)
-const frequency = '* * * * *';
+// const frequency = '* * * * *';
 
 cron.schedule(frequency, () => {
-  console.log('One week closer to death ☠️');
+  console.log('One day closer to death ☠️');
 
   checkForUpdates();
 }, {
   timezone: "America/Los_Angeles",
 });
 
+// generate the initial data set if it doesn't exist
 checkForUpdates();
